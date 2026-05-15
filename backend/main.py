@@ -20,8 +20,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://zpenz.vercel.app",
-        "https://zpenz-6l9bsya4p-morgancacm-gmailcoms-projects.vercel.app"],  
+        "https://zpenz.vercel.app"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
