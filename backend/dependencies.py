@@ -22,6 +22,7 @@ def get_current_user(
 
     payload = verify_supabase_token(token)
     if payload is None:
+        print("Supabase token rejected")
         raise credentials_exception
     
     email = payload.get("email")

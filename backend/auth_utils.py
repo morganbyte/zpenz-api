@@ -3,6 +3,7 @@ import json
 import os
 import time
 import urllib.request
+from urllib.parse import urlparse
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -15,7 +16,15 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
+_raw_supabase_url = (os.getenv("SUPABASE_URL") or "").strip().strip('"').rstrip("/")
+if _raw_supabase_url.endswith("/auth/v1"):
+    _raw_supabase_url = _raw_supabase_url[: -len("/auth/v1")]
+parsed = urlparse(_raw_supabase_url)
+if parsed.scheme and parsed.netloc:
+    SUPABASE_URL = f"{parsed.scheme}://{parsed.netloc}"
+else:
+    SUPABASE_URL = _raw_supabase_url
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY")
 SUPABASE_JWT_AUD = os.getenv("SUPABASE_JWT_AUD", "authenticated")
 SUPABASE_JWT_ISSUER = os.getenv("SUPABASE_JWT_ISSUER")
 
@@ -70,9 +79,16 @@ def _get_supabase_jwks():
         return cached_keys
 
     try:
-        with urllib.request.urlopen(f"{SUPABASE_URL}/auth/v1/certs") as response:
+        url = f"{SUPABASE_URL}/auth/v1/certs"
+        headers = {}
+        if SUPABASE_ANON_KEY:
+            headers["apikey"] = SUPABASE_ANON_KEY
+            headers["Authorization"] = f"Bearer {SUPABASE_ANON_KEY}"
+        request = urllib.request.Request(url, headers=headers) if headers else url
+        with urllib.request.urlopen(request) as response:
             data = json.load(response)
-    except Exception:
+    except Exception as exc:
+        print(f"Supabase JWKS fetch failed: {exc}")
         return cached_keys
 
     keys = data.get("keys") if isinstance(data, dict) else None
@@ -88,16 +104,33 @@ def verify_supabase_token(token: str):
     """Verificar JWT emitido por Supabase."""
     jwks = _get_supabase_jwks()
     if not jwks:
+        print("Supabase JWKS unavailable")
         return None
 
     try:
         header = jwt.get_unverified_header(token)
-    except JWTError:
+    except JWTError as exc:
+        print(f"Supabase token header decode failed: {exc}")
         return None
 
     kid = header.get("kid")
+    alg = header.get("alg")
+    if not kid or not alg:
+        print("Supabase token missing kid/alg")
+        return None
+
+    if alg not in {"RS256", "ES256"}:
+        print(f"Supabase token unsupported alg: {alg}")
+        return None
+
     key_data = next((key for key in jwks if key.get("kid") == kid), None)
     if not key_data:
+        print(f"Supabase JWKS kid not found: {kid}")
+        return None
+
+    key_alg = key_data.get("alg")
+    if key_alg and key_alg != alg:
+        print(f"Supabase JWKS alg mismatch: {key_alg} vs {alg}")
         return None
 
     try:
@@ -105,10 +138,11 @@ def verify_supabase_token(token: str):
         payload = jwt.decode(
             token,
             public_key.to_pem().decode("utf-8"),
-            algorithms=["RS256"],
+            algorithms=[alg],
             audience=SUPABASE_JWT_AUD,
             issuer=SUPABASE_JWT_ISSUER,
         )
         return payload
-    except JWTError:
+    except JWTError as exc:
+        print(f"Supabase token verify failed: {exc}")
         return None
