@@ -79,7 +79,7 @@ def _get_supabase_jwks():
         return cached_keys
 
     try:
-        url = f"{SUPABASE_URL}/auth/v1/jwks"
+        url = f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json"
         headers = {}
         if SUPABASE_ANON_KEY:
             headers["apikey"] = SUPABASE_ANON_KEY
