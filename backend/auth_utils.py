@@ -9,6 +9,9 @@ from typing import Optional
 
 from dotenv import load_dotenv
 from jose import JWTError, jwk, jwt
+from backend.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 load_dotenv()
 
@@ -88,7 +91,7 @@ def _get_supabase_jwks():
         with urllib.request.urlopen(request) as response:
             data = json.load(response)
     except Exception as exc:
-        print(f"Supabase JWKS fetch failed: {exc}")
+        logger.error(f"Supabase JWKS fetch failed: {exc}")
         return cached_keys
 
     keys = data.get("keys") if isinstance(data, dict) else None
@@ -104,33 +107,33 @@ def verify_supabase_token(token: str):
     """Verificar JWT emitido por Supabase."""
     jwks = _get_supabase_jwks()
     if not jwks:
-        print("Supabase JWKS unavailable")
+        logger.warning("Supabase JWKS unavailable")
         return None
 
     try:
         header = jwt.get_unverified_header(token)
     except JWTError as exc:
-        print(f"Supabase token header decode failed: {exc}")
+        logger.error(f"Supabase token header decode failed: {exc}")
         return None
 
     kid = header.get("kid")
     alg = header.get("alg")
     if not kid or not alg:
-        print("Supabase token missing kid/alg")
+        logger.warning("Supabase token missing kid/alg")
         return None
 
     if alg not in {"RS256", "ES256"}:
-        print(f"Supabase token unsupported alg: {alg}")
+        logger.warning(f"Supabase token unsupported alg: {alg}")
         return None
 
     key_data = next((key for key in jwks if key.get("kid") == kid), None)
     if not key_data:
-        print(f"Supabase JWKS kid not found: {kid}")
+        logger.warning(f"Supabase JWKS kid not found: {kid}")
         return None
 
     key_alg = key_data.get("alg")
     if key_alg and key_alg != alg:
-        print(f"Supabase JWKS alg mismatch: {key_alg} vs {alg}")
+        logger.warning(f"Supabase JWKS alg mismatch: {key_alg} vs {alg}")
         return None
 
     try:
@@ -144,5 +147,5 @@ def verify_supabase_token(token: str):
         )
         return payload
     except JWTError as exc:
-        print(f"Supabase token verify failed: {exc}")
+        logger.error(f"Supabase token verify failed: {exc}")
         return None
