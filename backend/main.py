@@ -1,8 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from backend.database import engine, Base
-from backend import models
 from backend.routers import auth, accounts, categories, transactions
 from backend.logging_config import configure_logging, get_logger
 from backend.exceptions import AppException
@@ -11,15 +9,6 @@ configure_logging()
 logger = get_logger(__name__)
 
 app = FastAPI(title="Finance App API")
-
-@app.on_event("startup")
-def startup():
-    try:
-        Base.metadata.create_all(bind=engine)
-        logger.info("Database tables initialized successfully")
-    except Exception as e:
-        logger.error(f"Database initialization failed", exc_info=True)
-        raise
 
 
 @app.exception_handler(AppException)
